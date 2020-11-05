@@ -60,24 +60,33 @@ class Server:
         return nick
 
     def receive_and_send(self, conn: socket.socket, nick: str, ) -> None:
-        message = self.receive_and_process(conn, nick)
+        recipient, message = self.receive_and_process_message(conn, nick)
         if not message:
             raise ConnectionAbortedError
-        self.relay(message)
+        self.relay(nick, recipient, message)
 
-    def receive_and_process(self, conn: socket.socket, nick: str) -> Union[bytes, bool]:
+    def receive_and_process_message(self, conn: socket.socket, nick: str) -> Union[Tuple[str, bytes], bool]:
         message = conn.recv(1024).decode()
+        receiver, message = self.process_message(message)
         try:
             message = self.message_manager[message](conn, nick)
         except KeyError:
             message = self.add_nick_to_message(message, nick)
-        return message
+        return receiver, message
+
+    @staticmethod
+    def process_message(message: str) -> Tuple[str, str]:
+        if message.startswith("@"):
+            nick, message = message.split(" ", 1)
+            return nick[1:], message
+        else:
+            return "", message
 
     @property
     def message_manager(self) -> Dict[str, callable]:
         manager = {
-            f"quit": self.close_connection,
-            f"stop_server": self.shut_down_server,
+            f"/quit": self.close_connection,
+            f"/stop_server": self.shut_down_server,
         }
         return manager
 
@@ -97,9 +106,16 @@ class Server:
     def add_nick_to_message(message: str, nick: str) -> bytes:
         return f"{nick}: {message}".encode('utf-8')
 
-    def relay(self, message: bytes) -> None:
-        for client in self.clients.values():
-            client.send(message)
+    def relay(self, sender: str, recipient: str, message: bytes) -> None:
+        if recipient:
+            try:
+                self.clients[recipient].send(message)
+                self.clients[sender].send(message)
+            except KeyError:
+                self.clients[sender].send(f"No such user: {recipient}".encode('utf-8'))
+        else:
+            for client in self.clients.values():
+                client.send(message)
 
     def _close_all_conn(self) -> None:
         for conn in self.clients.values():
@@ -153,4 +169,4 @@ class Client:
 
     @staticmethod
     def stop_server(conn: socket.socket) -> None:
-        conn.send(b"stop_server")
+        conn.send(b"/stop_server")
