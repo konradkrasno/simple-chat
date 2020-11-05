@@ -11,7 +11,7 @@ class Server:
         self.port = port
         self._s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._debug = debug
-        self.stop_server: bool = False
+        self._stop_server: bool = False
         self.clients: Dict[str, socket.socket] = {}
 
     def __enter__(self):
@@ -22,16 +22,15 @@ class Server:
 
     def bind(self) -> None:
         self._s.bind((self.host, self.port))
-        print(f"Socket binded to {self.port}")
 
     def listen(self) -> None:
         self._s.listen()
-        print("Socket is listening...")
+        print("Server is listening...")
 
     def echo(self) -> None:
         while True:
             conn, addr = self._s.accept()
-            if self.stop_server:
+            if self._stop_server:
                 break
             print(f"Got a connection from {addr!r}")
             thread = threading.Thread(target=self.handle, args=(conn,))
@@ -39,9 +38,9 @@ class Server:
 
     def handle(self, conn: socket.socket) -> None:
         nick = self.get_nick(conn)
-        while not self.stop_server:
+        while not self._stop_server:
             try:
-                self.receive_and_send(nick, conn)
+                self.receive_and_send(conn, nick)
             except OSError:
                 pass
             except ConnectionAbortedError:
@@ -60,7 +59,7 @@ class Server:
         self.clients[nick] = conn
         return nick
 
-    def receive_and_send(self, nick: str, conn: socket.socket) -> None:
+    def receive_and_send(self, conn: socket.socket, nick: str, ) -> None:
         message = self.receive_and_process(conn, nick)
         if not message:
             raise ConnectionAbortedError
@@ -68,17 +67,35 @@ class Server:
 
     def receive_and_process(self, conn: socket.socket, nick: str) -> Union[bytes, bool]:
         message = conn.recv(1024).decode()
-        if self._debug and message == f"stop_server":
-            self.stop_server = True
+        try:
+            message = self.message_manager[message](conn, nick)
+        except KeyError:
+            message = self.add_nick_to_message(message, nick)
+        return message
+
+    @property
+    def message_manager(self) -> Dict[str, callable]:
+        manager = {
+            f"quit": self.close_connection,
+            f"stop_server": self.shut_down_server,
+        }
+        return manager
+
+    def close_connection(self, conn: socket.socket, nick: str) -> bytes:
+        self.clients.pop(nick)
+        conn.close()
+        return f"{nick} left chat".encode('utf-8')
+
+    def shut_down_server(self, conn: socket.socket, nick: str) -> bool:
+        if self._debug:
+            self._stop_server = True
             self._close_all_conn()
             return False
-        elif message == f"quit":
-            self.clients.pop(nick)
-            conn.close()
-            message = f"{nick} left chat".encode('utf-8')
-        else:
-            message = self.add_nick_to_message(nick, message)
-        return message
+        return True
+
+    @staticmethod
+    def add_nick_to_message(message: str, nick: str) -> bytes:
+        return f"{nick}: {message}".encode('utf-8')
 
     def relay(self, message: bytes) -> None:
         for client in self.clients.values():
@@ -87,10 +104,6 @@ class Server:
     def _close_all_conn(self) -> None:
         for conn in self.clients.values():
             conn.close()
-
-    @staticmethod
-    def add_nick_to_message(nick: str, message: str) -> bytes:
-        return f"{nick}: {message}".encode('utf-8')
 
 
 class Client:
