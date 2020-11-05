@@ -146,8 +146,6 @@ class Client:
                     message = test_message
                 else:
                     message = f"{input()}"
-                if not message:
-                    message = f" "
                 conn.send(message.encode('utf-8'))
             except OSError:
                 conn.close()
