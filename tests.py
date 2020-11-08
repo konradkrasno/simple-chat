@@ -4,7 +4,8 @@ import threading
 import time
 
 from typing import *
-from chat_socket import Client, Server
+from source_server import Server
+from source_client import Client
 from server import start_server, HOST, PORT
 
 
@@ -25,7 +26,7 @@ def test_server(server: pytest.fixture) -> None:
 
     # greeting
     for user, conn in connections.items():
-        assert conn.recv(1024) == b"Connected to the server.\nGive your nick name: "
+        assert conn.recv(1024) == b"Give your nickname: "
         conn.send(f"{user}".encode('utf-8'))
         assert conn.recv(1024) == f"hello {user}".encode('utf-8')
 

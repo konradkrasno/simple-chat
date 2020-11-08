@@ -4,6 +4,10 @@ import threading
 from typing import *
 
 
+class StopServerException(Exception):
+    pass
+
+
 class Server:
 
     def __init__(self, host: str, port: int, debug: bool = False):
@@ -41,33 +45,38 @@ class Server:
         while not self._stop_server:
             try:
                 self.receive_and_send(conn, nick)
-            except OSError:
-                pass
-            except ConnectionAbortedError:
-                self.clients.pop(nick)
+            except (OSError, EOFError) as e:
+                print("An error occurred:", e)
+                break
+            except ConnectionResetError:
                 conn.close()
+            except StopServerException:
                 break
 
     def get_nick(self, conn: socket.socket) -> str:
-        conn.send(b"Connected to the server.\nGive your nick name: ")
-        nick = self.save_nick(conn)
-        conn.send(f"hello {nick}".encode('utf-8'))
-        return nick
+        while True:
+            conn.send(b"Give your nickname: ")
+            nick = self.save_nick(conn)
+            if nick:
+                conn.sendall(f"hello {nick}".encode('utf-8'))
+                return nick
 
     def save_nick(self, conn: socket.socket) -> str:
         nick = conn.recv(1024).decode()
-        self.clients[nick] = conn
-        return nick
+        if nick not in self.clients:
+            self.clients[nick] = conn
+            return nick
+        return ""
 
     def receive_and_send(self, conn: socket.socket, nick: str, ) -> None:
         recipient, message = self.receive_and_process_message(conn, nick)
         if not message:
-            raise ConnectionAbortedError
+            raise StopServerException
         self.relay(nick, recipient, message)
 
     def receive_and_process_message(self, conn: socket.socket, nick: str) -> Union[Tuple[str, bytes], bool]:
         message = conn.recv(1024).decode()
-        receiver, message = self.process_message(message)
+        receiver, message = self.process_message(message, nick)
         try:
             message = self.message_manager[message](conn, nick)
         except KeyError:
@@ -75,9 +84,12 @@ class Server:
         return receiver, message
 
     @staticmethod
-    def process_message(message: str) -> Tuple[str, str]:
+    def process_message(message: str, sender: str) -> Tuple[str, str]:
         if message.startswith("@"):
-            nick, message = message.split(" ", 1)
+            try:
+                nick, message = message.split(" ", 1)
+            except ValueError:
+                return sender, f"Can't send message to receiver. Try again."
             return nick[1:], message
         else:
             return "", message
@@ -102,6 +114,10 @@ class Server:
             return False
         return True
 
+    def _close_all_conn(self) -> None:
+        for conn in self.clients.values():
+            conn.close()
+
     @staticmethod
     def add_nick_to_message(message: str, nick: str) -> bytes:
         return f"{nick}: {message}".encode('utf-8')
@@ -109,64 +125,10 @@ class Server:
     def relay(self, sender: str, recipient: str, message: bytes) -> None:
         if recipient:
             try:
-                self.clients[recipient].send(message)
-                self.clients[sender].send(message)
+                self.clients[recipient].sendall(message)
+                self.clients[sender].sendall(message)
             except KeyError:
-                self.clients[sender].send(f"No such user: {recipient}".encode('utf-8'))
+                self.clients[sender].sendall(f"No such user: {recipient}".encode('utf-8'))
         else:
             for client in self.clients.values():
-                client.send(message)
-
-    def _close_all_conn(self) -> None:
-        for conn in self.clients.values():
-            conn.close()
-
-
-class Client:
-
-    def __init__(self, host: str, port: int):
-        self.host = host
-        self.port = port
-
-    def set_connection(self) -> socket.socket:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect((self.host, self.port))
-        return s
-
-    def echo(self, conn: socket.socket) -> None:
-        receive_thread = threading.Thread(target=self.receive, args=(conn,))
-        receive_thread.start()
-        write_thread = threading.Thread(target=self.relay, args=(conn,))
-        write_thread.start()
-
-    @staticmethod
-    def receive(conn: socket.socket) -> None:
-        while True:
-            try:
-                data = conn.recv(1024).decode('utf-8')
-                if data:
-                    print(data)
-                else:
-                    if conn:
-                        conn.close()
-                    break
-            except OSError:
-                conn.close()
-                break
-
-    @staticmethod
-    def relay(conn: socket.socket, test_message: str = '') -> None:
-        while True:
-            try:
-                if test_message:
-                    message = test_message
-                else:
-                    message = f"{input()}"
-                conn.send(message.encode('utf-8'))
-            except OSError:
-                conn.close()
-                break
-
-    @staticmethod
-    def stop_server(conn: socket.socket) -> None:
-        conn.send(b"/stop_server")
+                client.sendall(message)

@@ -1,4 +1,5 @@
-from chat_socket import Client
+import sys
+from source_client import Client
 
 
 def start_client(host: str, port: int) -> None:
@@ -8,4 +9,8 @@ def start_client(host: str, port: int) -> None:
 
 
 if __name__ == '__main__':
-    start_client('127.0.0.1', 12345)
+    if len(sys.argv) != 3:
+        print(f"usage {sys.argv[0]} <host> <port>")
+        exit(1)
+    host, port = sys.argv[1], int(sys.argv[2])
+    start_client(host, port)

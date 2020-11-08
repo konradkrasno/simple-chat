@@ -1,7 +1,5 @@
-from chat_socket import Server
-
-HOST = '127.0.0.1'
-PORT = 12345
+import sys
+from source_server import Server
 
 
 def start_server(host: str, port: int, debug: bool = False) -> None:
@@ -12,4 +10,8 @@ def start_server(host: str, port: int, debug: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    start_server(HOST, PORT, debug=True)
+    if len(sys.argv) != 3:
+        print(f"usage {sys.argv[0]} <host> <port>")
+        exit(1)
+    host, port = sys.argv[1], int(sys.argv[2])
+    start_server(host, port, debug=True)
