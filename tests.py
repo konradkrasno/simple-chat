@@ -6,7 +6,10 @@ import time
 from typing import *
 from source_server import Server
 from source_client import Client
-from server import start_server, HOST, PORT
+from server import start_server
+
+HOST = '127.0.0.1'
+PORT = 12345
 
 
 @pytest.fixture
@@ -47,8 +50,22 @@ def test_server(server: pytest.fixture) -> None:
     client.set_connection()
 
 
-def test_process_message():
+def test_process_message_when_valid():
     server = Server(HOST, PORT)
-    nick, message = server.process_message(f"@Jim how are you?")
+    nick, message = server.process_message(f"@Jim how are you?", "Freddy")
     assert nick == f"Jim"
     assert message == f"how are you?"
+
+
+def test_process_message_when_invalid():
+    server = Server(HOST, PORT)
+    nick, message = server.process_message(f"@Jim", "Freddy")
+    assert nick == f"Freddy"
+    assert message == f"Can't send message to receiver. Try again."
+
+
+def test_process_message_when_no_user():
+    server = Server(HOST, PORT)
+    nick, message = server.process_message(f"hello everyone", "Freddy")
+    assert nick == f""
+    assert message == f"hello everyone"
