@@ -89,7 +89,7 @@ class Server:
             try:
                 nick, message = message.split(" ", 1)
             except ValueError:
-                return sender, f"Can't send message to receiver. Try again."
+                return sender, f"Can't send message to receiver. Wrong syntax."
             return nick[1:], message
         else:
             return "", message
@@ -124,11 +124,17 @@ class Server:
 
     def relay(self, sender: str, recipient: str, message: bytes) -> None:
         if recipient:
-            try:
-                self.clients[recipient].sendall(message)
-                self.clients[sender].sendall(message)
-            except KeyError:
-                self.clients[sender].sendall(f"No such user: {recipient}".encode('utf-8'))
+            recipient_conn = self.clients.get(recipient)
+            sender_conn = self.clients.get(sender)
+            if recipient_conn:
+                recipient_conn.sendall(message)
+                if sender_conn:
+                    self.clients[sender].sendall(message)
+            else:
+                if sender_conn:
+                    self.clients[sender].sendall(f"No such user: {recipient}".encode('utf-8'))
+                else:
+                    print(f"Connection with {self} does not exist.")
         else:
             for client in self.clients.values():
                 client.sendall(message)
