@@ -61,7 +61,7 @@ def test_process_message_when_invalid():
     server = Server(HOST, PORT)
     nick, message = server.process_message(f"@Jim", "Freddy")
     assert nick == f"Freddy"
-    assert message == f"Can't send message to receiver. Try again."
+    assert message == f"Can't send message to receiver. Wrong syntax."
 
 
 def test_process_message_when_no_user():
